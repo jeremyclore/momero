@@ -73,55 +73,39 @@ function dedupeItems(items) {
   });
 }
 
-function parseSitemapByNesting($) {
+// Реальная разметка страницы /sitemap: ссылка на категорию (путь из одного
+// сегмента, напр. /businesses) обёрнута в <strong> (жирным шрифтом),
+// ссылки на подкатегории (/businesses/accounting) - обычные, без обёртки.
+// У всех ссылок класс "no-app-link", но полагаться на класс не будем -
+// он может быть служебным и без гарантий на будущее.
+function parseSitemapByBoldWrapper($) {
   const items = [];
-  let rootList = null;
-  let rootListCount = 0;
+  let currentCategory = null;
 
-  // Категории на странице sitemap оформлены как список, где каждый пункт
-  // сам содержит вложенный список подкатегорий (см. markdown-превью:
-  // "- **Category**" со вложенными "* Subcategory"). Ищем именно такой
-  // список, не полагаясь на конкретный тег/класс жирного начертания.
-  $("ul, ol").each((_, list) => {
-    const $list = $(list);
-    const directLis = $list.children("li");
-    if (directLis.length < 3) return;
-    let nestedCount = 0;
-    directLis.each((__, li) => {
-      if ($(li).find("ul, ol").length > 0) nestedCount++;
-    });
-    if (nestedCount >= Math.max(2, Math.floor(directLis.length * 0.5))) {
-      if (directLis.length > rootListCount) {
-        rootList = list;
-        rootListCount = directLis.length;
-      }
+  $("a").each((_, elem) => {
+    const $a = $(elem);
+    const href = $a.attr("href") || "";
+    const path = normalizeMonericaPath(href);
+    if (!path) return;
+    const segments = path.split("/").filter(Boolean);
+    const text = $a.text().trim();
+    if (!text) return;
+
+    const isBold = $a.closest("strong, b").length > 0;
+
+    if (segments.length === 1 && isBold) {
+      currentCategory = text;
+    } else if (segments.length === 2 && currentCategory) {
+      items.push({ category: currentCategory, name: text, url: BASE + path });
     }
   });
-
-  if (!rootList) return items;
-
-  $(rootList)
-    .children("li")
-    .each((_, li) => {
-      const $li = $(li);
-      const catLink = $li.find("a").first();
-      if (catLink.length === 0) return;
-      const category = catLink.text().trim();
-      if (!category) return;
-
-      $li.find("ul a, ol a").each((__, subA) => {
-        const $subA = $(subA);
-        const href = $subA.attr("href") || "";
-        const name = $subA.text().trim();
-        const path = normalizeMonericaPath(href);
-        if (!path || !name) return;
-        items.push({ category, name, url: BASE + path });
-      });
-    });
 
   return items;
 }
 
+// Фоллбэк на случай другой разметки: та же логика, но без требования
+// жирного начертания - текущей категорией считается последняя встреченная
+// ссылка с путём из одного сегмента.
 function parseSitemapByLinkOrder($) {
   const items = [];
   let currentCategory = null;
@@ -144,12 +128,13 @@ function parseSitemapByLinkOrder($) {
 function parseSitemap(html) {
   const $ = cheerio.load(html);
 
-  let items = parseSitemapByNesting($);
-  if (items.length === 0) {
-    // фоллбэк: если структура списка не распозналась, идём по всем ссылкам
-    // подряд и считаем текущей категорией последнюю встреченную ссылку
-    // с одним сегментом пути (без привязки к тегам жирного начертания).
-    items = parseSitemapByLinkOrder($);
+  let items = parseSitemapByBoldWrapper($);
+  // Если основной метод почти ничего не нашёл (структура страницы
+  // отличается от ожидаемой), пробуем более мягкий фоллбэк без требования
+  // жирного начертания.
+  if (items.length < 5) {
+    const fallbackItems = parseSitemapByLinkOrder($);
+    if (fallbackItems.length > items.length) items = fallbackItems;
   }
 
   return dedupeItems(items);
