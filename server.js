@@ -95,7 +95,7 @@ function parseSitemapByBoldWrapper($) {
 
     if (segments.length === 1 && isBold) {
       currentCategory = text;
-    } else if (segments.length === 2 && currentCategory) {
+    } else if (segments.length === 2 && segments[0] !== "site" && currentCategory) {
       items.push({ category: currentCategory, name: text, url: BASE + path });
     }
   });
@@ -118,7 +118,7 @@ function parseSitemapByLinkOrder($) {
     const text = $a.text().trim();
     if (segments.length === 1 && text) {
       currentCategory = text;
-    } else if (segments.length === 2 && currentCategory && text) {
+    } else if (segments.length === 2 && segments[0] !== "site" && currentCategory && text) {
       items.push({ category: currentCategory, name: text, url: BASE + path });
     }
   });
@@ -126,7 +126,13 @@ function parseSitemapByLinkOrder($) {
 }
 
 function parseSitemap(html) {
-  const $ = cheerio.load(html);
+  // Блок "Main Sponsors" и футер сайта идут после дерева категорий и могут
+  // содержать похожие по форме ссылки (например, счётчики отзывов вида
+  // /site/slug#reviews) - отбрасываем всё, что после этого блока, чтобы
+  // они не попали в разбор по ошибке.
+  const cutIdx = html.search(/main sponsors/i);
+  const scoped = cutIdx === -1 ? html : html.slice(0, cutIdx);
+  const $ = cheerio.load(scoped);
 
   let items = parseSitemapByBoldWrapper($);
   // Если основной метод почти ничего не нашёл (структура страницы
