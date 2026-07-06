@@ -47,47 +47,7 @@ function sleep(ms) {
 
 // ---------- parsing ----------
 
-function parseSitemap(html) {
-  const $ = cheerio.load(html);
-  const items = [];
-  let currentCategory = null;
-
-  $("a").each((_, elem) => {
-    const $a = $(elem);
-    const href = $a.attr("href") || "";
-    if (!href.startsWith("/")) return;
-    const cleanPath = href.split("?")[0].split("#")[0];
-    const segments = cleanPath.split("/").filter(Boolean);
-    const text = $a.text().trim();
-    if (segments.length === 0 || !text) return;
-
-    if (segments.length === 1) {
-      const parentTag = elem.parent && elem.parent.tagName;
-      if (parentTag === "b" || parentTag === "strong") {
-        currentCategory = text;
-      }
-    } else if (segments.length === 2 && currentCategory) {
-      items.push({ category: currentCategory, name: text, url: BASE + cleanPath });
-    }
-  });
-
-  // фоллбэк, если разметка сайта отличается от ожидаемой
-  if (items.length === 0) {
-    currentCategory = null;
-    $("a").each((_, elem) => {
-      const $a = $(elem);
-      const href = $a.attr("href") || "";
-      if (!href.startsWith("/")) return;
-      const cleanPath = href.split("?")[0].split("#")[0];
-      const segments = cleanPath.split("/").filter(Boolean);
-      const text = $a.text().trim();
-      if (segments.length === 1 && text) currentCategory = text;
-      else if (segments.length === 2 && currentCategory && text) {
-        items.push({ category: currentCategory, name: text, url: BASE + cleanPath });
-      }
-    });
-  }
-
+function dedupeItems(items) {
   const seen = new Set();
   return items.filter((it) => {
     const key = `${it.category}|${it.name}|${it.url}`;
@@ -95,6 +55,88 @@ function parseSitemap(html) {
     seen.add(key);
     return true;
   });
+}
+
+function parseSitemapByNesting($) {
+  const items = [];
+  let rootList = null;
+  let rootListCount = 0;
+
+  // Категории на странице sitemap оформлены как список, где каждый пункт
+  // сам содержит вложенный список подкатегорий (см. markdown-превью:
+  // "- **Category**" со вложенными "* Subcategory"). Ищем именно такой
+  // список, не полагаясь на конкретный тег/класс жирного начертания.
+  $("ul, ol").each((_, list) => {
+    const $list = $(list);
+    const directLis = $list.children("li");
+    if (directLis.length < 3) return;
+    let nestedCount = 0;
+    directLis.each((__, li) => {
+      if ($(li).find("ul, ol").length > 0) nestedCount++;
+    });
+    if (nestedCount >= Math.max(2, Math.floor(directLis.length * 0.5))) {
+      if (directLis.length > rootListCount) {
+        rootList = list;
+        rootListCount = directLis.length;
+      }
+    }
+  });
+
+  if (!rootList) return items;
+
+  $(rootList)
+    .children("li")
+    .each((_, li) => {
+      const $li = $(li);
+      const catLink = $li.find("a").first();
+      if (catLink.length === 0) return;
+      const category = catLink.text().trim();
+      if (!category) return;
+
+      $li.find("ul a, ol a").each((__, subA) => {
+        const $subA = $(subA);
+        const href = $subA.attr("href") || "";
+        const name = $subA.text().trim();
+        if (!href.startsWith("/") || !name) return;
+        const cleanPath = href.split("?")[0].split("#")[0];
+        items.push({ category, name, url: BASE + cleanPath });
+      });
+    });
+
+  return items;
+}
+
+function parseSitemapByLinkOrder($) {
+  const items = [];
+  let currentCategory = null;
+  $("a").each((_, elem) => {
+    const $a = $(elem);
+    const href = $a.attr("href") || "";
+    if (!href.startsWith("/")) return;
+    const cleanPath = href.split("?")[0].split("#")[0];
+    const segments = cleanPath.split("/").filter(Boolean);
+    const text = $a.text().trim();
+    if (segments.length === 1 && text) {
+      currentCategory = text;
+    } else if (segments.length === 2 && currentCategory && text) {
+      items.push({ category: currentCategory, name: text, url: BASE + cleanPath });
+    }
+  });
+  return items;
+}
+
+function parseSitemap(html) {
+  const $ = cheerio.load(html);
+
+  let items = parseSitemapByNesting($);
+  if (items.length === 0) {
+    // фоллбэк: если структура списка не распозналась, идём по всем ссылкам
+    // подряд и считаем текущей категорией последнюю встреченную ссылку
+    // с одним сегментом пути (без привязки к тегам жирного начертания).
+    items = parseSitemapByLinkOrder($);
+  }
+
+  return dedupeItems(items);
 }
 
 function findMaxPage(html) {
