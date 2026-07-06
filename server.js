@@ -166,40 +166,111 @@ function findMaxPage(html) {
   return max;
 }
 
-function parseListingsPage(html, categoryLabel) {
+function isMonericaHost(absoluteUrl) {
+  try {
+    const u = new URL(absoluteUrl);
+    return /(^|\.)monerica\.com$/.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function resolveHref(href) {
+  if (!href) return null;
+  try {
+    return new URL(href, BASE).toString();
+  } catch {
+    return null;
+  }
+}
+
+// "19", "(19)", "4.7" - похоже на рейтинг/счётчик отзывов, а не на название
+function looksLikeRatingOrEmpty(text) {
+  const t = (text || "").trim();
+  if (t === "") return true;
+  return /^\(?\d+(\.\d+)?\)?$/.test(t);
+}
+
+// Блок "Main Sponsors" - общесайтовая витрина, одинаковая на каждой странице
+// пагинации любой категории. К конкретной подкатегории отношения не имеет и
+// дублируется при обходе страниц, поэтому вырезаем его и всё, что после него,
+// ещё до парсинга (там же обычно идёт футер сайта - он тоже не нужен).
+function stripFooterSections(html) {
+  const idx = html.search(/main sponsors/i);
+  return idx === -1 ? html : html.slice(0, idx);
+}
+
+function parseListingsPage(rawHtml, categoryLabel) {
+  const html = stripFooterSections(rawHtml);
   const $ = cheerio.load(html);
   const rows = [];
-  const seen = new Set();
 
-  $("a[href*='/site/']").each((_, elem) => {
-    const $a = $(elem);
-    const href = ($a.attr("href") || "").split("#")[0];
-    if (!href) return;
-    const profileUrl = href.startsWith("http") ? href : BASE + href;
-    if (seen.has(profileUrl)) return;
+  // Контейнер одного листинга - <li>, содержащий ссылку на /site/...
+  let containers = $("li")
+    .filter((_, el) => $(el).find("a[href*='/site/']").length > 0)
+    .toArray();
 
-    let container = $a.closest("li");
-    if (container.length === 0) container = $a.closest("div");
-    if (container.length === 0) container = $a.closest("p");
-    if (container.length === 0) return;
+  // Фоллбэк для другой вёрстки (без <li>, например карточки-<div>): берём
+  // самые глубокие div/p с такой ссылкой, чтобы не задвоить родительские
+  // контейнеры.
+  if (containers.length === 0) {
+    containers = $("div, p")
+      .filter((_, el) => {
+        const $el = $(el);
+        if ($el.find("a[href*='/site/']").length === 0) return false;
+        return $el.find("div, p").filter((__, inner) => $(inner).find("a[href*='/site/']").length > 0).length === 0;
+      })
+      .toArray();
+  }
 
-    seen.add(profileUrl);
+  for (const el of containers) {
+    const $c = $(el);
+    const links = $c.find("a").toArray();
+    if (links.length === 0) continue;
 
-    const fullText = container.text().replace(/\s+/g, " ").trim();
-    let name = $a.text().trim();
+    let profileUrl = "";
+    for (const a of links) {
+      const href = $(a).attr("href") || "";
+      if (href.includes("/site/")) {
+        const resolved = resolveHref(href.split("#")[0]);
+        if (resolved) {
+          profileUrl = resolved;
+          break;
+        }
+      }
+    }
+    if (!profileUrl) continue;
+
+    // Название: первая ссылка с осмысленным текстом. Для обычных листингов
+    // это ссылка на профиль (/site/...), для спонсорских карточек - ссылка
+    // сразу на внешний сайт (у /site/ там только счётчик отзывов вида "(19)").
+    let name = "";
+    for (const a of links) {
+      const t = $(a).text().trim();
+      if (!looksLikeRatingOrEmpty(t)) {
+        name = t;
+        break;
+      }
+    }
     if (!name) {
-      name = ($a.attr("title") || "").replace("Profile: ", "").trim();
+      const withTitle = links.find((a) => ($(a).attr("title") || "").startsWith("Profile: "));
+      if (withTitle) name = ($(withTitle).attr("title") || "").replace("Profile: ", "").trim();
+    }
+    if (!name) name = "(без названия)";
+
+    // Сайт компании: первая ссылка, ведущая не на monerica.com
+    let websiteUrl = "";
+    for (const a of links) {
+      const href = $(a).attr("href") || "";
+      if (!href || href.startsWith("#")) continue;
+      const resolved = resolveHref(href);
+      if (resolved && !isMonericaHost(resolved)) {
+        websiteUrl = resolved;
+        break;
+      }
     }
 
-    let websiteUrl = "";
-    container.find("a").each((__, x) => {
-      if (websiteUrl) return;
-      const h = $(x).attr("href") || "";
-      if (h && !h.includes("monerica.com") && !h.startsWith("/") && !h.startsWith("#")) {
-        websiteUrl = h;
-      }
-    });
-
+    const fullText = $c.text().replace(/\s+/g, " ").trim();
     const ratingMatch = fullText.match(/(\d(?:\.\d)?)\s*\((\d+)\)/);
     let desc = fullText;
     if (name) desc = desc.replace(name, "");
@@ -209,11 +280,11 @@ function parseListingsPage(html, categoryLabel) {
 
     rows.push({
       category: categoryLabel,
-      name: name || "(без названия)",
+      name,
       link: websiteUrl || profileUrl,
       description: desc,
     });
-  });
+  }
 
   return rows;
 }
