@@ -47,6 +47,22 @@ function sleep(ms) {
 
 // ---------- parsing ----------
 
+// Сайт отдаёт ссылки то относительными ("/businesses"), то абсолютными
+// ("https://monerica.com/businesses") - приводим к единому виду: пути
+// без домена, либо null, если ссылка ведёт на другой сайт.
+function normalizeMonericaPath(href) {
+  if (!href) return null;
+  let url;
+  try {
+    url = new URL(href, BASE);
+  } catch {
+    return null;
+  }
+  if (!/(^|\.)monerica\.com$/.test(url.hostname)) return null;
+  const path = url.pathname.replace(/\/+$/, "");
+  return path || "/";
+}
+
 function dedupeItems(items) {
   const seen = new Set();
   return items.filter((it) => {
@@ -97,9 +113,9 @@ function parseSitemapByNesting($) {
         const $subA = $(subA);
         const href = $subA.attr("href") || "";
         const name = $subA.text().trim();
-        if (!href.startsWith("/") || !name) return;
-        const cleanPath = href.split("?")[0].split("#")[0];
-        items.push({ category, name, url: BASE + cleanPath });
+        const path = normalizeMonericaPath(href);
+        if (!path || !name) return;
+        items.push({ category, name, url: BASE + path });
       });
     });
 
@@ -112,14 +128,14 @@ function parseSitemapByLinkOrder($) {
   $("a").each((_, elem) => {
     const $a = $(elem);
     const href = $a.attr("href") || "";
-    if (!href.startsWith("/")) return;
-    const cleanPath = href.split("?")[0].split("#")[0];
-    const segments = cleanPath.split("/").filter(Boolean);
+    const path = normalizeMonericaPath(href);
+    if (!path) return;
+    const segments = path.split("/").filter(Boolean);
     const text = $a.text().trim();
     if (segments.length === 1 && text) {
       currentCategory = text;
     } else if (segments.length === 2 && currentCategory && text) {
-      items.push({ category: currentCategory, name: text, url: BASE + cleanPath });
+      items.push({ category: currentCategory, name: text, url: BASE + path });
     }
   });
   return items;
