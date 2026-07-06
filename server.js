@@ -140,12 +140,31 @@ function parseSitemap(html) {
   return dedupeItems(items);
 }
 
-function findMaxPage(html) {
+function findMaxPage(html, subcatUrl) {
   const $ = cheerio.load(html);
   let max = 1;
+
+  let subcatPath = "";
+  try {
+    subcatPath = new URL(subcatUrl).pathname.replace(/\/+$/, "");
+  } catch {
+    subcatPath = "";
+  }
+
   $("a[href*='/page/']").each((_, elem) => {
     const href = $(elem).attr("href") || "";
-    const m = href.match(/\/page\/(\d+)/);
+    const resolved = resolveHref(href);
+    if (!resolved) return;
+    let path;
+    try {
+      path = new URL(resolved).pathname;
+    } catch {
+      return;
+    }
+    // Учитываем только пагинацию именно этой подкатегории - иначе можно
+    // случайно зацепить чужую "/page/2"-ссылку на странице и задвоить данные.
+    if (subcatPath && !path.startsWith(subcatPath + "/page/")) return;
+    const m = path.match(/\/page\/(\d+)/);
     if (m) max = Math.max(max, parseInt(m[1], 10));
   });
   return max;
@@ -323,13 +342,23 @@ app.post("/api/scrape", async (req, res) => {
     if (stopped) break;
     const label = `${item.category} / ${item.name}`;
     send({ type: "log", level: "info", message: `${label} ...` });
+    const seenInSubcat = new Set();
+    const dedupPush = (rows) => {
+      const fresh = rows.filter((r) => {
+        const key = r.link + "|" + r.name;
+        if (seenInSubcat.has(key)) return false;
+        seenInSubcat.add(key);
+        return true;
+      });
+      if (fresh.length) send({ type: "rows", rows: fresh });
+    };
 
     try {
       const html1 = await fetchHtml(item.url);
       const rows1 = parseListingsPage(html1, label);
-      if (rows1.length) send({ type: "rows", rows: rows1 });
+      dedupPush(rows1);
 
-      const maxPage = Math.min(findMaxPage(html1), safePageLimit);
+      const maxPage = Math.min(findMaxPage(html1, item.url), safePageLimit);
       for (let p = 2; p <= maxPage; p++) {
         if (stopped) break;
         await sleep(safeDelay);
@@ -337,7 +366,7 @@ app.post("/api/scrape", async (req, res) => {
         try {
           const htmlP = await fetchHtml(pageUrl);
           const rowsP = parseListingsPage(htmlP, label);
-          if (rowsP.length) send({ type: "rows", rows: rowsP });
+          dedupPush(rowsP);
         } catch (e) {
           send({ type: "log", level: "warn", message: `  стр. ${p}: ${e.message}` });
         }
