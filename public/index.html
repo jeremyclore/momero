@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monerica → Excel</title>
+<style>
+  :root{
+    --bg:#131110;
+    --surface:#1b1815;
+    --surface-alt:#221e1a;
+    --border:#3a332c;
+    --border-soft:#2a2521;
+    --text:#EDE7DD;
+    --text-muted:#9C948A;
+    --accent:#F26822;
+    --ok:#4FD1C5;
+    --warn:#E2B93B;
+    --err:#E2574C;
+    --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);line-height:1.5;padding:2rem 1.25rem 4rem;}
+  .wrap{max-width:980px;margin:0 auto;}
+  header{margin-bottom:1.75rem;border-bottom:1px solid var(--border);padding-bottom:1.25rem;}
+  .eyebrow{font-family:var(--font-mono);font-size:12px;color:var(--accent);letter-spacing:.04em;}
+  h1{font-family:var(--font-mono);font-size:26px;font-weight:600;margin:.35rem 0 .35rem;letter-spacing:-.01em;}
+  .sub{color:var(--text-muted);font-size:14px;max-width:620px;}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.1rem 1.25rem;margin-bottom:1.1rem;}
+  .panel h2{font-family:var(--font-mono);font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:0 0 .85rem;display:flex;align-items:center;gap:.5rem;}
+  .panel h2 .n{color:var(--accent);}
+  .row{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;}
+  button{font-family:var(--font-mono);background:var(--surface-alt);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:.55rem .9rem;font-size:13px;cursor:pointer;transition:border-color .15s, background .15s;}
+  button:hover:not(:disabled){border-color:var(--accent);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  button.primary{background:var(--accent);color:#1a0d05;border-color:var(--accent);font-weight:600;}
+  button.primary:hover:not(:disabled){background:#ff7a35;}
+  button.danger{border-color:var(--err);color:var(--err);}
+  input[type="number"], input[type="text"]{font-family:var(--font-mono);background:var(--surface-alt);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:.5rem .65rem;font-size:13px;}
+  input[type="number"]{width:5.5rem;}
+  label.field{display:flex;align-items:center;gap:.5rem;font-size:13px;color:var(--text-muted);}
+  .cats{max-height:260px;overflow-y:auto;border:1px solid var(--border-soft);border-radius:8px;padding:.25rem .5rem;background:var(--surface-alt);}
+  details{border-bottom:1px solid var(--border-soft);padding:.35rem 0;}
+  details:last-child{border-bottom:none;}
+  summary{cursor:pointer;font-size:13px;font-weight:600;padding:.25rem 0;display:flex;align-items:center;gap:.5rem;}
+  summary::marker{color:var(--accent);}
+  .sub-list{padding:.25rem 0 .4rem 1.4rem;display:flex;flex-direction:column;gap:.3rem;}
+  .sub-list label{font-size:12.5px;color:var(--text-muted);display:flex;align-items:center;gap:.45rem;}
+  .sub-list label:hover{color:var(--text);}
+  .placeholder-hint{color:var(--text-muted);font-size:13px;font-family:var(--font-mono);}
+  .term{background:#0d0b0a;border:1px solid var(--border-soft);border-radius:8px;padding:.75rem .9rem;font-family:var(--font-mono);font-size:12.5px;color:var(--ok);height:170px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;}
+  .term .line-err{color:var(--err);}
+  .term .line-warn{color:var(--warn);}
+  .term .line-sys{color:var(--text-muted);}
+  .cursor{display:inline-block;width:7px;height:13px;background:var(--ok);vertical-align:-2px;animation:blink 1s steps(1) infinite;}
+  @keyframes blink{50%{opacity:0;}}
+  .progress-bar{height:6px;background:var(--surface-alt);border-radius:99px;overflow:hidden;margin:.6rem 0 0;border:1px solid var(--border-soft);}
+  .progress-fill{height:100%;background:var(--accent);width:0%;transition:width .25s;}
+  .stats{display:flex;gap:1.5rem;font-family:var(--font-mono);font-size:13px;color:var(--text-muted);margin-top:.5rem;flex-wrap:wrap;}
+  .stats b{color:var(--text);}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:left;font-family:var(--font-mono);font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:1px solid var(--border);padding:.5rem .6rem;position:sticky;top:0;background:var(--surface);}
+  tbody td{padding:.55rem .6rem;border-bottom:1px solid var(--border-soft);vertical-align:top;}
+  tbody tr:hover{background:var(--surface-alt);}
+  td.name{font-weight:600;white-space:nowrap;}
+  td.link a{color:var(--accent);text-decoration:none;word-break:break-all;}
+  td.link a:hover{text-decoration:underline;}
+  td.desc{color:var(--text-muted);max-width:420px;}
+  .table-wrap{max-height:480px;overflow:auto;border:1px solid var(--border-soft);border-radius:8px;}
+  .empty{padding:2rem;text-align:center;color:var(--text-muted);font-family:var(--font-mono);font-size:13px;}
+  .note{font-size:12.5px;color:var(--text-muted);margin-top:.6rem;}
+  .top-actions{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.75rem;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">$ curl https://your-app.up.railway.app/api/scrape</div>
+    <h1>Monerica <span style="color:var(--accent)">⇢</span> Excel</h1>
+    <p class="sub">Сервер сам ходит на monerica.com (без CORS-прокси и их капризов) и
+    стримит результат в браузер. Собранное можно выгрузить в .xlsx одним кликом.</p>
+  </header>
+
+  <div class="panel">
+    <h2><span class="n">01</span> Категории</h2>
+    <div class="row" style="margin-bottom:.75rem;">
+      <button id="loadCatsBtn">Загрузить список категорий</button>
+      <button id="selAllBtn" disabled>Выбрать всё</button>
+      <button id="selNoneBtn" disabled>Снять всё</button>
+      <span id="catStatus" class="placeholder-hint">Список пуст — нажмите «Загрузить»</span>
+    </div>
+    <div id="catsBox" class="cats"><div class="placeholder-hint" style="padding:.5rem;">—</div></div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="n">02</span> Параметры сбора</h2>
+    <div class="row">
+      <label class="field">Задержка между запросами (мс)
+        <input type="number" id="delayInput" value="400" min="0" step="100">
+      </label>
+      <label class="field">Лимит страниц на подкатегорию
+        <input type="number" id="pageLimitInput" value="10" min="1" step="1">
+      </label>
+      <button id="runBtn" class="primary" disabled>Начать сбор</button>
+      <button id="stopBtn" class="danger" disabled>Стоп</button>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="stats">
+      <span>Подкатегорий: <b id="statSubcats">0</b></span>
+      <span>Обработано: <b id="statDone">0</b></span>
+      <span>Собрано строк: <b id="statRows">0</b></span>
+      <span>Ошибок: <b id="statErrors">0</b></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="n">03</span> Консоль</h2>
+    <div class="term" id="term">ожидание команды <span class="cursor"></span></div>
+  </div>
+
+  <div class="panel">
+    <div class="top-actions">
+      <h2 style="margin:0;"><span class="n">04</span> Результат</h2>
+      <div class="row">
+        <input type="text" id="filterInput" placeholder="фильтр по названию / описанию…" style="width:230px;">
+        <button id="exportBtn" disabled>Скачать Excel</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:16%">Категория</th><th style="width:16%">Название</th><th style="width:20%">Ссылка</th><th>Описание</th></tr></thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+      <div id="emptyState" class="empty">Данных пока нет — загрузите категории и начните сбор.</div>
+    </div>
+    <p class="note">Экспорт использует библиотеку SheetJS (грузится с cdnjs) прямо в браузере.</p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.20.1/xlsx.full.min.js"></script>
+<script>
+const el = id => document.getElementById(id);
+const term = el('term');
+const resultsBody = el('resultsBody');
+const emptyState = el('emptyState');
+
+let subcatItems = [];
+let allRows = [];
+let abortController = null;
+
+function log(msg, kind){
+  const cur = term.querySelector('.cursor');
+  if(cur) cur.remove();
+  const line = document.createElement('div');
+  if(kind==='error') line.className='line-err';
+  else if(kind==='warn') line.className='line-warn';
+  else if(kind==='sys') line.className='line-sys';
+  line.textContent = (kind==='error'?'✗ ':kind==='warn'?'! ':'  ') + msg;
+  term.appendChild(line);
+  const cursorLine = document.createElement('div');
+  cursorLine.innerHTML = '<span class="cursor"></span>';
+  term.appendChild(cursorLine);
+  term.scrollTop = term.scrollHeight;
+}
+
+function escapeHtml(s){
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function shorten(url){ return url && url.length > 55 ? url.slice(0,52)+'…' : (url||''); }
+
+function renderCategories(items){
+  subcatItems = items.map(it => ({ ...it, checkboxEl: null }));
+  const byCategory = new Map();
+  subcatItems.forEach((it, idx) => {
+    if(!byCategory.has(it.category)) byCategory.set(it.category, []);
+    byCategory.get(it.category).push(idx);
+  });
+
+  const box = el('catsBox');
+  box.innerHTML = '';
+  for(const [category, idxList] of byCategory){
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    const headCb = document.createElement('input');
+    headCb.type = 'checkbox';
+    headCb.checked = true;
+    summary.appendChild(headCb);
+    summary.appendChild(document.createTextNode(`${category} (${idxList.length})`));
+    details.appendChild(summary);
+
+    const list = document.createElement('div');
+    list.className = 'sub-list';
+    idxList.forEach(idx => {
+      const label = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = true;
+      subcatItems[idx].checkboxEl = cb;
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(subcatItems[idx].name));
+      list.appendChild(label);
+    });
+    details.appendChild(list);
+    box.appendChild(details);
+
+    headCb.addEventListener('change', () => {
+      idxList.forEach(idx => { subcatItems[idx].checkboxEl.checked = headCb.checked; });
+    });
+  }
+
+  el('statSubcats').textContent = subcatItems.length;
+  el('catStatus').textContent = `Загружено подкатегорий: ${subcatItems.length}`;
+  el('selAllBtn').disabled = false;
+  el('selNoneBtn').disabled = false;
+  el('runBtn').disabled = false;
+}
+
+function addRows(rows){
+  if(!rows || rows.length === 0) return;
+  allRows.push(...rows);
+  emptyState.style.display = 'none';
+  const frag = document.createDocumentFragment();
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(r.category)}</td>
+      <td class="name">${escapeHtml(r.name)}</td>
+      <td class="link"><a href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(shorten(r.link))}</a></td>
+      <td class="desc">${escapeHtml(r.description)}</td>`;
+    frag.appendChild(tr);
+  });
+  resultsBody.appendChild(frag);
+  el('statRows').textContent = allRows.length;
+  el('exportBtn').disabled = allRows.length === 0;
+}
+
+el('loadCatsBtn').addEventListener('click', async () => {
+  el('loadCatsBtn').disabled = true;
+  log('GET /api/sitemap …', 'sys');
+  try{
+    const res = await fetch('/api/sitemap');
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'неизвестная ошибка');
+    if(data.items.length === 0){
+      log('категории не найдены — структура сайта могла измениться', 'error');
+    } else {
+      renderCategories(data.items);
+      log(`получено категорий/подкатегорий: ${data.items.length}`);
+    }
+  }catch(e){
+    log('ошибка загрузки sitemap: ' + e.message, 'error');
+  }finally{
+    el('loadCatsBtn').disabled = false;
+  }
+});
+
+el('selAllBtn').addEventListener('click', () => {
+  subcatItems.forEach(it => { if(it.checkboxEl) it.checkboxEl.checked = true; });
+});
+el('selNoneBtn').addEventListener('click', () => {
+  subcatItems.forEach(it => { if(it.checkboxEl) it.checkboxEl.checked = false; });
+});
+
+el('stopBtn').addEventListener('click', () => {
+  if(abortController){
+    abortController.abort();
+    log('остановка отправлена серверу…', 'warn');
+  }
+});
+
+el('runBtn').addEventListener('click', async () => {
+  const selected = subcatItems
+    .filter(it => it.checkboxEl && it.checkboxEl.checked)
+    .map(({category, name, url}) => ({category, name, url}));
+  if(selected.length === 0){
+    log('не выбрано ни одной подкатегории', 'warn');
+    return;
+  }
+
+  const delay = Math.max(0, parseInt(el('delayInput').value, 10) || 0);
+  const pageLimit = Math.max(1, parseInt(el('pageLimitInput').value, 10) || 1);
+
+  el('runBtn').disabled = true;
+  el('stopBtn').disabled = false;
+  el('loadCatsBtn').disabled = true;
+
+  abortController = new AbortController();
+  log(`старт сбора: ${selected.length} подкатегорий, задержка ${delay}мс, лимит ${pageLimit} стр.`, 'sys');
+
+  try{
+    const res = await fetch('/api/scrape', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ subcats: selected, delay, pageLimit }),
+      signal: abortController.signal
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while(true){
+      const { value, done } = await reader.read();
+      if(done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx;
+      while((idx = buffer.indexOf('\n')) >= 0){
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if(!line) continue;
+        handleEvent(JSON.parse(line));
+      }
+    }
+  }catch(e){
+    if(e.name === 'AbortError'){
+      log('сбор остановлен пользователем.', 'sys');
+    } else {
+      log('ошибка соединения: ' + e.message, 'error');
+    }
+  }finally{
+    el('runBtn').disabled = false;
+    el('stopBtn').disabled = true;
+    el('loadCatsBtn').disabled = false;
+    abortController = null;
+  }
+});
+
+function handleEvent(evt){
+  switch(evt.type){
+    case 'start':
+      break;
+    case 'log':
+      log(evt.message, evt.level === 'error' ? 'error' : evt.level === 'warn' ? 'warn' : null);
+      break;
+    case 'rows':
+      addRows(evt.rows);
+      break;
+    case 'progress':
+      el('statDone').textContent = evt.done;
+      el('statErrors').textContent = evt.errors;
+      el('progressFill').style.width = Math.round((evt.done/evt.total)*100) + '%';
+      break;
+    case 'done':
+      log(evt.stopped ? 'остановлено.' : 'сбор завершён.', 'sys');
+      break;
+  }
+}
+
+el('filterInput').addEventListener('input', (e) => {
+  const q = e.target.value.trim().toLowerCase();
+  Array.from(resultsBody.children).forEach((tr, i) => {
+    const r = allRows[i];
+    const match = !q || (r.name + ' ' + r.description + ' ' + r.category).toLowerCase().includes(q);
+    tr.style.display = match ? '' : 'none';
+  });
+});
+
+el('exportBtn').addEventListener('click', () => {
+  if(allRows.length === 0) return;
+  const data = allRows.map(r => ({
+    'Категория': r.category,
+    'Название': r.name,
+    'Ссылка': r.link,
+    'Описание': r.description
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws['!cols'] = [{wch:28},{wch:24},{wch:38},{wch:60}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Monerica');
+  XLSX.writeFile(wb, 'monerica.xlsx');
+  log(`экспортировано строк: ${allRows.length} → monerica.xlsx`);
+});
+</script>
+</body>
+</html>
