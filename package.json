@@ -4,7 +4,7 @@
   "description": "Server-side scraper for monerica.com with Excel export, deployable on Railway",
   "main": "server.js",
   "engines": {
-    "node": ">=18"
+    "node": ">=20 <23"
   },
   "scripts": {
     "start": "node server.js"

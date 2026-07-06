@@ -1,3 +1,18 @@
+// Полифилл для Node 18.x: некоторые сборки не определяют глобальный File,
+// из-за чего undici (используется внутри fetch) падает при загрузке модуля
+// с ReferenceError: File is not defined. В Node 20+ это не требуется, но
+// полифилл безвреден и в этом случае просто не сработает (typeof !== undefined).
+if (typeof globalThis.File === "undefined") {
+  const { Blob } = require("node:buffer");
+  globalThis.File = class File extends Blob {
+    constructor(bits, name, options = {}) {
+      super(bits, options);
+      this.name = String(name);
+      this.lastModified = options.lastModified || Date.now();
+    }
+  };
+}
+
 const express = require("express");
 const path = require("path");
 const cheerio = require("cheerio");
